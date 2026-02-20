@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>3D Город</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{background:#000;overflow:hidden;touch-action:none;font-family:'Courier New',monospace;}
+canvas{display:block;position:fixed;inset:0;}
+
+/* ── LOADING ── */
+#loading{
+  position:fixed;inset:0;z-index:200;
+  background:radial-gradient(ellipse at 50% 60%,#0d1f3c,#060b14);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:opacity .6s;
+}
+.city-silhouette{
+  display:flex;align-items:flex-end;gap:3px;margin-bottom:32px;opacity:.25;
+}
+.city-silhouette div{
+  background:linear-gradient(to top,#38bdf8,#0ea5e9);
+  border-radius:2px 2px 0 0;
+  animation:pulse 2s ease-in-out infinite alternate;
+}
+@keyframes pulse{from{opacity:.3}to{opacity:.9}}
+#loading h1{
+  font-size:clamp(2.2rem,8vw,4rem);font-weight:900;color:#fff;
+  letter-spacing:-.02em;line-height:1;text-align:center;margin-bottom:6px;
+}
+#loading h1 em{color:#38bdf8;font-style:normal;}
+#loading .sub{
+  color:rgba(255,255,255,.35);font-size:.7rem;letter-spacing:4px;
+  text-transform:uppercase;margin-bottom:40px;
+}
+#prog-wrap{
+  width:200px;height:3px;background:rgba(255,255,255,.1);
+  border-radius:4px;overflow:hidden;margin-bottom:12px;
+}
+#prog{height:100%;width:0;background:linear-gradient(90deg,#0ea5e9,#38bdf8);border-radius:4px;transition:width .1s;}
+#prog-txt{font-size:.65rem;color:rgba(255,255,255,.3);letter-spacing:2px;}
+#enter-btn{
+  display:none;margin-top:28px;
+  padding:16px 52px;background:linear-gradient(135deg,#0ea5e9,#38bdf8);
+  border:none;border-radius:14px;color:#000;font-size:1rem;font-weight:900;
+  letter-spacing:2px;cursor:pointer;
+  box-shadow:0 0 60px rgba(56,189,248,.45),0 4px 20px rgba(0,0,0,.4);
+  transform:scale(1);transition:transform .15s;
+}
+#enter-btn:active{transform:scale(.96);}
+
+/* ── HUD ── */
+#hud{position:fixed;inset:0;pointer-events:none;z-index:50;}
+#top-bar{
+  position:absolute;top:0;left:0;right:0;
+  display:flex;justify-content:space-between;align-items:flex-start;
+  padding:14px 16px;
+}
+.badge{
+  background:rgba(0,0,0,.5);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:12px;padding:8px 14px;
+  backdrop-filter:blur(16px);
+}
+#title{font-size:.75rem;font-weight:700;color:#38bdf8;letter-spacing:2px;}
+#info{font-size:.62rem;color:rgba(255,255,255,.45);line-height:1.8;text-align:right;}
+#info span{color:#38bdf8;font-weight:700;}
+
+/* ── CROSSHAIR ── */
+#cross{
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:18px;height:18px;pointer-events:none;z-index:55;
+}
+#cross::before,#cross::after{
+  content:'';position:absolute;background:rgba(255,255,255,.7);border-radius:1px;
+}
+#cross::before{width:2px;height:18px;left:8px;top:0;}
+#cross::after{width:18px;height:2px;top:8px;left:0;}
+
+/* ── JOYSTICK (LEFT) ── */
+#joy-zone{
+  position:fixed;left:0;bottom:0;width:48%;height:48%;
+  z-index:60;pointer-events:all;
+}
+#joy-outer{
+  position:absolute;left:50px;bottom:50px;
+  width:110px;height:110px;border-radius:50%;
+  background:rgba(255,255,255,.06);
+  border:2px solid rgba(255,255,255,.15);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 30px rgba(56,189,248,.1);
+}
+#joy-inner{
+  width:46px;height:46px;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,#60d8ff,#0ea5e9);
+  border:2px solid rgba(255,255,255,.3);
+  box-shadow:0 0 20px rgba(56,189,248,.6);
+  transition:transform .04s;
+  will-change:transform;
+}
+
+/* ── CAM ZONE (RIGHT) ── */
+#cam-zone{
+  position:fixed;right:0;bottom:0;width:52%;height:100%;
+  z-index:60;pointer-events:all;
+}
+
+/* ── BUTTONS ── */
+#btns{
+  position:fixed;right:20px;bottom:24px;
+  display:flex;flex-direction:column;gap:12px;
+  z-index:65;pointer-events:all;
+}
+.ctrl-btn{
+  width:58px;height:58px;border-radius:50%;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.3rem;font-weight:900;
+  box-shadow:0 4px 20px rgba(0,0,0,.4);
+  transition:transform .1s,box-shadow .1s;
+  -webkit-tap-highlight-color:transparent;
+}
+.ctrl-btn:active{transform:scale(.9);box-shadow:0 2px 10px rgba(0,0,0,.3);}
+#btn-jump{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;}
+#btn-run{background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-size:.75rem;letter-spacing:1px;}
+
+/* ── SPEED INDICATOR ── */
+#speed-bar{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  width:120px;height:4px;background:rgba(255,255,255,.1);
+  border-radius:4px;overflow:hidden;z-index:55;pointer-events:none;
+}
+#speed-fill{height:100%;width:0%;background:linear-gradient(90deg,#22c55e,#38bdf8);border-radius:4px;transition:width .1s;}
+
+/* ── DAY/NIGHT TOGGLE ── */
+#dn-btn{
+  position:fixed;top:14px;left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);
+  border-radius:20px;padding:6px 16px;color:#fff;font-size:.65rem;
+  letter-spacing:2px;cursor:pointer;z-index:66;
+  backdrop-filter:blur(12px);pointer-events:all;
+}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  <div class="city-silhouette" id="sil"></div>
+  <h1>3D <em>ГОРОД</em></h1>
+  <div class="sub">Река · Мост · 30×30 · Дороги</div>
+  <div id="prog-wrap"><div id="prog"></div></div>
+  <div id="prog-txt">ГЕНЕРАЦИЯ ГОРОДА...</div>
+  <button id="enter-btn">▶ &nbsp;ВОЙТИ В ГОРОД</button>
+</div>
+
+<canvas id="c"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="top-bar">
+    <div class="badge"><div id="title">🏙 3D ГОРОД</div></div>
+    <div class="badge" id="info">
+      X:<span id="cx">0</span> Z:<span id="cz">0</span><br>
+      <span id="mode">🚶 ХОД</span>
+    </div>
+  </div>
+</div>
+<div id="cross"></div>
+<div id="speed-bar"><div id="speed-fill"></div></div>
+
+<!-- CONTROLS -->
+<div id="joy-zone">
+  <div id="joy-outer"><div id="joy-inner"></div></div>
+</div>
+<div id="cam-zone"></div>
+
+<div id="btns">
+  <button class="ctrl-btn" id="btn-jump">↑</button>
+  <button class="ctrl-btn" id="btn-run">RUN</button>
+</div>
+
+<button id="dn-btn">🌙 НОЧЬ</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ════════════════════════════════════════
+//  RENDERER
+// ════════════════════════════════════════
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas,antialias:false,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.5));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled = false;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.1,280);
+
+window.addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+// ════════════════════════════════════════
+//  ДЕНЬ / НОЧЬ
+// ════════════════════════════════════════
+let isNight = false;
+const SKY_DAY   = new THREE.Color(0x7ec8e3);
+const SKY_NIGHT = new THREE.Color(0x060d1f);
+const FOG_DAY   = new THREE.Color(0x9dd5e8);
+const FOG_NIGHT = new THREE.Color(0x060d1f);
+
+scene.background = SKY_DAY.clone();
+scene.fog = new THREE.Fog(FOG_DAY.clone(),55,210);
+
+const sunLight = new THREE.DirectionalLight(0xfff3c0,1.5);
+sunLight.position.set(120,150,80);
+scene.add(sunLight);
+
+const moonLight = new THREE.DirectionalLight(0x3060a0,0.4);
+moonLight.position.set(-80,100,-60);
+moonLight.visible=false;
+scene.add(moonLight);
+
+const ambDay   = new THREE.AmbientLight(0xb8d4f0,0.9);
+const ambNight = new THREE.AmbientLight(0x101830,1.2);
+ambNight.visible=false;
+scene.add(ambDay,ambNight);
+
+// Window lights (emissive, shown at night)
+const windowMats=[];
+
+function toggleDayNight(){
+  isNight=!isNight;
+  document.getElementById('dn-btn').textContent=isNight?'☀️ ДЕНЬ':'🌙 НОЧЬ';
+  scene.background = (isNight?SKY_NIGHT:SKY_DAY).clone();
+  scene.fog.color  = (isNight?FOG_NIGHT:FOG_DAY).clone();
+  sunLight.visible = !isNight;
+  moonLight.visible= isNight;
+  ambDay.visible   = !isNight;
+  ambNight.visible = isNight;
+  renderer.toneMappingExposure = isNight?0.5:1.0;
+  windowMats.forEach(m=>{
+    m.emissiveIntensity = isNight ? 0.8 : 0;
+  });
+}
+document.getElementById('dn-btn').addEventListener('click',toggleDayNight);
+
+// ════════════════════════════════════════
+//  MATERIALS
+// ════════════════════════════════════════
+function lm(c,emissive=0x000000){
+  return new THREE.MeshLambertMaterial({color:c,emissive,emissiveIntensity:0});
+}
+const M={
+  ground:  lm(0x2e2a1e),
+  road:    lm(0x161616),
+  line:    lm(0xddcc44),
+  sidewalk:lm(0xaaa599),
+  river:   new THREE.MeshLambertMaterial({color:0x0d5fa0,transparent:true,opacity:.82}),
+  rbed:    lm(0x0a3d6a),
+  bridge:  lm(0x706858),
+  rail:    lm(0x4a4438),
+  roof:    lm(0x1e1e24),
+  grass:   lm(0x357a22),
+  tree:    lm(0x1e5c12),
+  trunk:   lm(0x4a2c0a),
+  b:[
+    lm(0xc07840), // кирпич
+    lm(0x7a9db5), // стекло
+    lm(0xd8d0bc), // бетон
+    lm(0xa83025), // красный
+    lm(0x4a7060), // зелёный
+    lm(0xb8a870), // жёлтый
+    lm(0x607898), // синий
+    lm(0x906858), // коричневый
+  ]
+};
+// Window emissive materials (for night)
+const winMats=[
+  new THREE.MeshLambertMaterial({color:0xffdd88,emissive:0xffaa00,emissiveIntensity:0}),
+  new THREE.MeshLambertMaterial({color:0x88ccff,emissive:0x4488ff,emissiveIntensity:0}),
+  new THREE.MeshLambertMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:0}),
+];
+winMats.forEach(m=>windowMats.push(m));
+
+// ════════════════════════════════════════
+//  GEOMETRY HELPERS
+// ════════════════════════════════════════
+const GEO_BOX = new THREE.BoxGeometry(1,1,1);
+const GEO_CYL = new THREE.CylinderGeometry(1,1,1,8);
+const GEO_CONE= new THREE.ConeGeometry(1,1,8);
+
+function box(x,y,z,sx,sy,sz,mat){
+  const m=new THREE.Mesh(GEO_BOX,mat);
+  m.position.set(x,y+sy/2,z);
+  m.scale.set(sx,sy,sz);
+  scene.add(m); return m;
+}
+function cyl(x,y,z,r,h,mat){
+  const m=new THREE.Mesh(GEO_CYL,mat);
+  m.position.set(x,y+h/2,z);
+  m.scale.set(r,h,r);
+  scene.add(m); return m;
+}
+function cone(x,y,z,r,h,mat){
+  const m=new THREE.Mesh(GEO_CONE,mat);
+  m.position.set(x,y+h/2,z);
+  m.scale.set(r,h,r);
+  scene.add(m); return m;
+}
+
+// ════════════════════════════════════════
+//  CITY CONFIG
+// ════════════════════════════════════════
+const COLS=30,ROWS=30,BLOCK=5,ROAD=2.5,STEP=BLOCK+ROAD;
+const W=COLS*STEP,H=ROWS*STEP,RZ=H/2,RW=12;
+
+// Seeded random
+let _s=77;
+function sr(){_s=(_s*1664525+1013904223)&0xffffffff;return(_s>>>0)/0xffffffff;}
+function srr(a,b){return a+sr()*(b-a);}
+function sri(a,b){return Math.floor(srr(a,b+1));}
+
+// ════════════════════════════════════════
+//  BUILD (async with progress)
+// ════════════════════════════════════════
+const setP=(v,t)=>{
+  document.getElementById('prog').style.width=v+'%';
+  if(t)document.getElementById('prog-txt').textContent=t;
+};
+const wait=()=>new Promise(r=>setTimeout(r,0));
+
+// Build silhouette on loading screen
+(()=>{
+  const s=document.getElementById('sil');
+  const heights=[18,45,28,60,38,52,22,48,35,55,25,42];
+  heights.forEach(h=>{
+    const d=document.createElement('div');
+    d.style.cssText=`width:14px;height:${h}px;animation-delay:${Math.random()*2}s`;
+    s.appendChild(d);
+  });
+})();
+
+async function buildCity(){
+  // ── GROUND ──
+  setP(3,'⛰ ЗЕМЛЯ...');
+  box(W/2,0,H/2,W+60,.3,H+60,M.ground);
+  await wait();
+
+  // ── ROADS ──
+  setP(10,'🛣 ДОРОГИ...');
+  for(let r=0;r<=ROWS;r++){
+    const z=r*STEP;
+    if(Math.abs(z-RZ)<RW/2+1) continue;
+    box(W/2,.0,z,W,.07,ROAD,M.road);
+    // разметка
+    for(let seg=0;seg<W;seg+=9)
+      box(seg+3,.04,z,5,.02,.22,M.line);
+    // тротуары
+    for(const s of[-1,1])
+      box(W/2,.0,z+s*(ROAD/2+.5),W,.14,.9,M.sidewalk);
+  }
+  for(let c=0;c<=COLS;c++){
+    const x=c*STEP;
+    const bl=RZ-RW/2-1;
+    const ts=RZ+RW/2+1,tl=H-ts;
+    box(x,.0,bl/2,ROAD,.07,bl,M.road);
+    box(x,.0,ts+tl/2,ROAD,.07,tl,M.road);
+    for(const s of[-1,1]){
+      box(x+s*(ROAD/2+.5),.0,bl/2,.9,.14,bl,M.sidewalk);
+      box(x+s*(ROAD/2+.5),.0,ts+tl/2,.9,.14,tl,M.sidewalk);
+    }
+  }
+  await wait();
+
+  // ── RIVER ──
+  setP(22,'🌊 РЕКА...');
+  box(W/2,-2,RZ,W+60,4,RW,M.rbed);
+  box(W/2,.05,RZ,W+60,.08,RW,M.river);
+  // берега
+  for(const s of[-1,1]){
+    box(W/2,.0,RZ+s*(RW/2+1.4),W+60,.12,3,M.sidewalk);
+    // трава у реки
+    box(W/2,.1,RZ+s*(RW/2+3.5),W+60,.06,4,M.grass);
+  }
+  await wait();
+
+  // ── BRIDGES ──
+  setP(32,'🌉 МОСТЫ...');
+  for(let i=0;i<3;i++){
+    const bx=W*(i+1)/4;
+    const blen=RW+6;
+    // настил
+    box(bx,.22,RZ,5.5,.38,blen,M.bridge);
+    // дорога
+    box(bx,.42,RZ,ROAD,.07,blen,M.road);
+    // арки
+    for(const az of[-blen*.28,0,blen*.28]){
+      box(bx,.22,RZ+az,5.8,.08,1.2,M.bridge);
+      for(const s of[-1,1])
+        cyl(bx+s*2.1,.22,RZ+az,.15,1.8,M.bridge);
+    }
+    // перила
+    for(const s of[-1,1]){
+      const px=bx+s*2.4;
+      box(px,.42,RZ,.18,.1,blen,M.bridge);
+      box(px,1.3,RZ,.12,.1,blen,M.rail);
+      for(let st=0;st<Math.ceil(blen);st+=1.5)
+        box(px,.42,RZ-blen/2+st,.12,.9,.12,M.rail);
+    }
+    // опоры
+    for(const pz of[RZ-RW*.3,RZ+RW*.3]){
+      box(bx,-1,pz,1.2,2.2,1.2,M.bridge);
+    }
+  }
+  await wait();
+
+  // ── BUILDINGS ──
+  setP(42,'🏢 ЗДАНИЯ...');
+  const parks=new Set();
+  for(let i=0;i<50;i++) parks.add(`${sri(0,COLS-1)},${sri(0,ROWS-1)}`);
+
+  let bc=0;
+  for(let c=0;c<COLS;c++){
+    for(let r=0;r<ROWS;r++){
+      const bx=c*STEP+ROAD+BLOCK/2;
+      const bz=r*STEP+ROAD+BLOCK/2;
+      const onRiver=bz-BLOCK/2<RZ+RW/2+1 && bz+BLOCK/2>RZ-RW/2-1;
+      if(onRiver){
+        box(bx,0,bz,BLOCK*.88,.08,BLOCK*.88,M.grass);
+        if(sr()<.5){
+          const tx=bx+srr(-1.5,1.5),tz=bz+srr(-1.5,1.5);
+          cyl(tx,0,tz,.14,1.3,M.trunk);
+          cyl(tx,1.3,tz,.9,2,M.tree);
+        }
+        continue;
+      }
+      if(parks.has(`${c},${r}`)){
+        box(bx,0,bz,BLOCK*.92,.08,BLOCK*.92,M.grass);
+        const nt=sri(2,4);
+        for(let t=0;t<nt;t++){
+          const tx=bx+srr(-1.8,1.8),tz=bz+srr(-1.8,1.8);
+          cyl(tx,0,tz,.13,srr(1,1.6),M.trunk);
+          cyl(tx,srr(1,1.6),tz,srr(.7,1.1),srr(1.5,2.2),M.tree);
+        }
+        continue;
+      }
+
+      const dist=Math.sqrt((c-COLS/2)**2+(r-ROWS/2)**2);
+      const fac=Math.max(.18,1-dist/(COLS*.52));
+      const h=srr(3,3+24*fac);
+      const mg=srr(.1,.45);
+      const bw=BLOCK-mg;
+      const bmat=M.b[bc%M.b.length];
+
+      // Тело
+      box(bx,0,bz,bw,h,bw,bmat);
+
+      // Окна (полосы)
+      const wmat=winMats[bc%winMats.length];
+      const floors=Math.max(1,Math.floor(h/2.5));
+      for(let fl=0;fl<floors;fl++){
+        const wy=1.2+fl*2.5;
+        if(wy+.5<h)
+          box(bx,wy,bz,bw+.02,.6,bw+.02,wmat);
+      }
+
+      // Крыша
+      box(bx,h,bz,bw+.15,.3,bw+.15,M.roof);
+
+      // Башня на высоких
+      if(h>15){
+        const tw=bw*.3,th=srr(2.5,6);
+        box(bx,h+.3,bz,tw,th,tw,M.roof);
+        if(h>18) cone(bx,h+.3+th,bz,tw*.8,srr(2,4),M.roof);
+      }
+
+      // Антенна
+      if(sr()<.2){
+        cyl(bx,h+.3,bz,.04,srr(1.5,4),M.rail);
+      }
+      bc++;
+    }
+    setP(42+(c/COLS)*45);
+    if(c%2===0) await wait();
+  }
+
+  // ── STREET LIGHTS ──
+  setP(90,'💡 ФОНАРИ...');
+  for(let c=0;c<=COLS;c+=3){
+    for(let r=0;r<=ROWS;r+=3){
+      const x=c*STEP,z=r*STEP;
+      if(Math.abs(z-RZ)<RW/2+2) continue;
+      cyl(x+.8,0,z+.8,.06,3.5,M.rail);
+      cyl(x+.8,3.5,z+.8,.06,.6,M.rail);
+      // лампа
+      const lamp=new THREE.Mesh(
+        new THREE.SphereGeometry(.12,6,6),
+        new THREE.MeshLambertMaterial({color:0xffeeaa,emissive:0xffaa00,emissiveIntensity:0})
+      );
+      lamp.position.set(x+.8,4.1,z+.8);
+      scene.add(lamp);
+      windowMats.push(lamp.material);
+    }
+  }
+  await wait();
+
+  // ── PLAYER CHARACTER (visible body) ──
+  setP(97,'🚶 ПЕРСОНАЖ...');
+  // Тело игрока - капсула из двух шаров и цилиндра
+  playerMesh=new THREE.Group();
+
+  const bodyGeo=new THREE.CylinderGeometry(.22,.22,.8,8);
+  const bodyMat=new THREE.MeshLambertMaterial({color:0x2255cc});
+  const body=new THREE.Mesh(bodyGeo,bodyMat);
+  body.position.y=.5;
+
+  const headGeo=new THREE.SphereGeometry(.22,8,8);
+  const headMat=new THREE.MeshLambertMaterial({color:0xffcc99});
+  const head=new THREE.Mesh(headGeo,headMat);
+  head.position.y=1.15;
+
+  const legL=new THREE.Mesh(new THREE.CylinderGeometry(.1,.1,.5,6),new THREE.MeshLambertMaterial({color:0x334455}));
+  legL.position.set(-.12,-.1,0);
+  const legR=legL.clone();legR.position.x=.12;
+
+  playerMesh.add(body,head,legL,legR);
+  playerMesh.visible=false; // скрыт от себя (от первого лица)
+  scene.add(playerMesh);
+
+  setP(100,'✅ ГОТОВО!');
+  await wait();
+  document.getElementById('enter-btn').style.display='block';
+  document.getElementById('prog-txt').textContent='';
+}
+
+// ════════════════════════════════════════
+//  PLAYER STATE
+// ════════════════════════════════════════
+let playerMesh=null;
+const player={
+  pos:new THREE.Vector3(15,1.8,15),
+  yaw:0,pitch:0,
+  vy:0,onGround:true,
+  running:false,
+  jx:0,jz:0,
+};
+const WALK_SPD=9,RUN_SPD=18,JUMP_V=8,GRAVITY=22,FLOOR_Y=1.8;
+
+// ════════════════════════════════════════
+//  JOYSTICK
+// ════════════════════════════════════════
+const jOuter=document.getElementById('joy-outer');
+const jInner=document.getElementById('joy-inner');
+const jZone=document.getElementById('joy-zone');
+const JR=42;
+let jTid=null,jBx=0,jBy=0;
+
+jZone.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  const t=e.changedTouches[0];
+  jTid=t.identifier;
+  const r=jOuter.getBoundingClientRect();
+  jBx=r.left+r.width/2;jBy=r.top+r.height/2;
+},{passive:false});
+
+jZone.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    if(t.identifier!==jTid) continue;
+    let dx=t.clientX-jBx,dy=t.clientY-jBy;
+    const d=Math.sqrt(dx*dx+dy*dy);
+    if(d>JR){dx=dx/d*JR;dy=dy/d*JR;}
+    jInner.style.transform=`translate(${dx}px,${dy}px)`;
+    player.jx=dx/JR;player.jz=dy/JR;
+  }
+},{passive:false});
+
+const jEnd=e=>{
+  for(const t of e.changedTouches)
+    if(t.identifier===jTid){
+      jTid=null;
+      jInner.style.transform='translate(0,0)';
+      player.jx=0;player.jz=0;
+    }
+};
+jZone.addEventListener('touchend',jEnd);
+jZone.addEventListener('touchcancel',jEnd);
+
+// ════════════════════════════════════════
+//  CAMERA LOOK
+// ════════════════════════════════════════
+const camZone=document.getElementById('cam-zone');
+let cTid=null,cLx=0,cLy=0;
+camZone.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  const t=e.changedTouches[0];cTid=t.identifier;cLx=t.clientX;cLy=t.clientY;
+},{passive:false});
+camZone.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    if(t.identifier!==cTid) continue;
+    player.yaw  -=(t.clientX-cLx)*.28;
+    player.pitch-=(t.clientY-cLy)*.22;
+    player.pitch=Math.max(-75,Math.min(75,player.pitch));
+    cLx=t.clientX;cLy=t.clientY;
+  }
+},{passive:false});
+camZone.addEventListener('touchend',e=>{for(const t of e.changedTouches)if(t.identifier===cTid)cTid=null;});
+
+// ════════════════════════════════════════
+//  BUTTONS
+// ════════════════════════════════════════
+document.getElementById('btn-jump').addEventListener('touchstart',e=>{
+  e.preventDefault();
+  if(player.onGround){player.vy=JUMP_V;player.onGround=false;}
+},{passive:false});
+
+let runHeld=false;
+document.getElementById('btn-run').addEventListener('touchstart',e=>{e.preventDefault();runHeld=true;},{passive:false});
+document.getElementById('btn-run').addEventListener('touchend',()=>runHeld=false);
+document.getElementById('btn-run').addEventListener('touchcancel',()=>runHeld=false);
+
+// Keyboard
+const K={};
+window.addEventListener('keydown',e=>K[e.code]=true);
+window.addEventListener('keyup',e=>K[e.code]=false);
+
+// ════════════════════════════════════════
+//  GAME LOOP
+// ════════════════════════════════════════
+let last=0,legPhase=0;
+
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt=Math.min((now-last)/1000,.05);last=now;
+
+  const yrad=player.yaw*Math.PI/180;
+  const spd=(runHeld||K['ShiftLeft']||K['ShiftRight']?RUN_SPD:WALK_SPD)*dt;
+  player.running=runHeld||K['ShiftLeft']||K['ShiftRight'];
+
+  let mx=player.jx,mz=player.jz;
+  if(K['KeyW']||K['ArrowUp'])   mz-=1;
+  if(K['KeyS']||K['ArrowDown']) mz+=1;
+  if(K['KeyA']||K['ArrowLeft']) mx-=1;
+  if(K['KeyD']||K['ArrowRight'])mx+=1;
+  if(K['Space']&&player.onGround){player.vy=JUMP_V;player.onGround=false;}
+
+  const sin=Math.sin(yrad),cos=Math.cos(yrad);
+  const dx=(cos*mx-sin*mz)*spd;
+  const dz=(sin*mx+cos*mz)*spd;
+  player.pos.x=Math.max(1,Math.min(W-1,player.pos.x+dx));
+  player.pos.z=Math.max(1,Math.min(H-1,player.pos.z+dz));
+
+  // Гравитация
+  player.vy-=GRAVITY*dt;
+  player.pos.y+=player.vy*dt;
+  if(player.pos.y<=FLOOR_Y){player.pos.y=FLOOR_Y;player.vy=0;player.onGround=true;}
+
+  // Анимация ног персонажа
+  const moving=Math.abs(mx)+Math.abs(mz)>0.05;
+  if(moving) legPhase+=dt*(player.running?8:4);
+  if(playerMesh){
+    playerMesh.position.copy(player.pos);
+    playerMesh.position.y-=1.8;
+    playerMesh.rotation.y=yrad;
+    const legSwing=moving?Math.sin(legPhase)*.4:0;
+    playerMesh.children[2].rotation.x= legSwing;
+    playerMesh.children[3].rotation.x=-legSwing;
+  }
+
+  // Камера
+  camera.position.copy(player.pos);
+  camera.rotation.order='YXZ';
+  camera.rotation.y=yrad;
+  camera.rotation.x=player.pitch*Math.PI/180;
+
+  // HUD
+  document.getElementById('cx').textContent=player.pos.x.toFixed(0);
+  document.getElementById('cz').textContent=player.pos.z.toFixed(0);
+  document.getElementById('mode').textContent=player.running?'🏃 БЕГ':'🚶 ХОД';
+
+  const spFrac=Math.min(1,(Math.abs(dx)+Math.abs(dz))/(spd*1.5));
+  document.getElementById('speed-fill').style.width=(spFrac*100)+'%';
+
+  renderer.render(scene,camera);
+}
+
+// ════════════════════════════════════════
+//  START
+// ════════════════════════════════════════
+document.getElementById('enter-btn').addEventListener('click',()=>{
+  const ld=document.getElementById('loading');
+  ld.style.opacity='0';
+  setTimeout(()=>ld.style.display='none',600);
+  requestAnimationFrame(loop);
+});
+
+buildCity();
+</script>
+</body>
+</html>
